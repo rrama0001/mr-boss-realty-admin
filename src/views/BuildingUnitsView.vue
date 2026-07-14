@@ -544,7 +544,9 @@ export default {
                 monthly_rent: unit.monthly_rent ?? '',
                 daily_rent: unit.daily_rent ?? '',
                 hourly_rent: unit.hourly_rent ?? '',
-                asset_image_urls: unit.asset_image_urls || (unit.assets || []).map((asset) => asset.image_link).filter(Boolean),
+                asset_image_urls: (unit.asset_image_urls || (unit.assets || []).map((asset) => asset.image_link).filter(Boolean))
+                    .map((url) => resolveMediaUrl(url))
+                    .filter(Boolean),
                 cover_image_url: unit.cover_image_url || '',
                 images_videos_link: unit.images_videos_link || '',
                 payment_terms_link: unit.payment_terms_link || '',
