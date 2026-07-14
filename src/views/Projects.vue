@@ -146,6 +146,12 @@
                                                             :alt="galleryImageLabel(image)"
                                                             class="property-gallery-upload__image"
                                                         />
+                                                        <span
+                                                            v-if="isProjectCoverImage(image.url)"
+                                                            class="unit-photos-editor__pick-tag"
+                                                        >
+                                                            Website Default
+                                                        </span>
                                                     </figure>
                                                     <span
                                                         class="property-gallery-upload__label-readonly"
@@ -270,6 +276,7 @@
                                     </div>
                                     <div class="mb-3">
                                         <PropertyLogoUpload
+                                            ref="propertyLogo"
                                             :project-id="activeProject?.id"
                                             :logo-url="projectLogoUrl"
                                             @update:logo-url="projectLogoUrl = $event"
@@ -279,7 +286,9 @@
                                         <PropertyGalleryUpload
                                             ref="propertyGallery"
                                             :project-id="activeProject?.id"
+                                            :cover-image-url="projectCoverImageUrl"
                                             @update:images="projectGalleryImages = $event"
+                                            @update:cover-image-url="projectCoverImageUrl = $event"
                                         />
                                     </div>
                                 </template>
@@ -387,6 +396,7 @@ export default {
             activeModalRecordId: null,
             projectForm: emptyProjectForm(),
             projectLogoUrl: '',
+            projectCoverImageUrl: '',
             projectGalleryImages: [],
             projectsList: [],
             projectFieldHelp: PROJECT_FIELD_HELP,
@@ -493,22 +503,33 @@ export default {
         async loadProjectLogo(projectId) {
             if (!projectId) {
                 this.projectLogoUrl = '';
+                this.projectCoverImageUrl = '';
                 this.projectGalleryImages = [];
                 return;
             }
 
             try {
                 const res = await this.$api.get(`/projects/${projectId}`);
-                this.projectLogoUrl = res.data.logo_url || '';
-                this.projectGalleryImages = res.data.gallery_images || [];
+                this.projectLogoUrl = resolveMediaUrl(res.data.logo_url || '');
+                this.projectCoverImageUrl = resolveMediaUrl(res.data.cover_image_url || '');
+                this.projectGalleryImages = (res.data.gallery_images || []).map((image) => ({
+                    ...image,
+                    url: resolveMediaUrl(image.url),
+                }));
             } catch (err) {
                 console.error('Error loading property media:', err.response?.data || err);
                 this.projectLogoUrl = '';
+                this.projectCoverImageUrl = '';
                 this.projectGalleryImages = [];
             }
         },
         resolveProjectGalleryUrl(url) {
             return resolveMediaUrl(url);
+        },
+        isProjectCoverImage(url) {
+            const cover = resolveMediaUrl(this.projectCoverImageUrl);
+            const candidate = resolveMediaUrl(url);
+            return Boolean(cover && candidate && cover === candidate);
         },
         galleryImageLabel(image) {
             return galleryImageDisplayLabel(image, image?.id);
@@ -541,6 +562,7 @@ export default {
             this.isViewMode = true;
             this.projectForm = this.projectToForm(project);
             this.projectLogoUrl = '';
+            this.projectCoverImageUrl = '';
             this.projectGalleryImages = [];
             this.showProjectModal = true;
             this.loadProjectLogo(project.id);
@@ -552,6 +574,7 @@ export default {
             this.isViewMode = false;
             this.projectForm = emptyProjectForm();
             this.projectLogoUrl = '';
+            this.projectCoverImageUrl = '';
             this.projectGalleryImages = [];
             this.showProjectModal = true;
         },
@@ -577,6 +600,7 @@ export default {
             this.activeModalRecordId = null;
             this.projectForm = emptyProjectForm();
             this.projectLogoUrl = '';
+            this.projectCoverImageUrl = '';
             this.projectGalleryImages = [];
 
             if (highlightId) {
@@ -595,7 +619,14 @@ export default {
             this.savingProject = true;
 
             try {
-                if (this.$refs.propertyGallery?.saveAllPendingLabels) {
+                if (!this.isNewProject && this.$refs.propertyGallery?.flushPendingBeforeSave) {
+                    try {
+                        await this.$refs.propertyGallery.flushPendingBeforeSave();
+                    } catch (err) {
+                        showAppAlert(getApiErrorMessage(err, 'Failed to save property images.'));
+                        return;
+                    }
+                } else if (!this.isNewProject && this.$refs.propertyGallery?.saveAllPendingLabels) {
                     try {
                         await this.$refs.propertyGallery.saveAllPendingLabels();
                     } catch (err) {
@@ -621,6 +652,28 @@ export default {
                 let res;
                 if (this.isNewProject) {
                     res = await this.$api.post('/projects', payload);
+                    const newId = res.data?.id;
+                    if (newId) {
+                        try {
+                            if (this.$refs.propertyLogo?.flushPendingUpload) {
+                                await this.$refs.propertyLogo.flushPendingUpload(newId);
+                            }
+                            if (this.$refs.propertyGallery?.flushPendingUploads) {
+                                await this.$refs.propertyGallery.flushPendingUploads(newId);
+                            }
+                        } catch (err) {
+                            showAppAlert(
+                                getApiErrorMessage(
+                                    err,
+                                    'Property was created, but uploading logo or images failed. Open the property to retry.',
+                                ),
+                            );
+                            await this.loadProjects();
+                            this.activeModalRecordId = newId;
+                            this.closeProjectModal();
+                            return;
+                        }
+                    }
                 } else if (editingId != null) {
                     res = await this.$api.put(`/projects/${editingId}`, payload);
                 } else {

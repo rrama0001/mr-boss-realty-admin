@@ -7,7 +7,7 @@ export const PROJECT_FIELD_HELP = {
     property_logo:
         'Square logo shown on the public property page. Upload JPG, PNG, WebP, or GIF (max 5 MB), then crop before saving.',
     property_gallery:
-        'Upload unit, room, amenity, and listing photos once per property. Add a label to each image, then press Enter or click outside the field to save it.',
+        'Upload photos once, then assign them to units or rooms. Click an image to set the website default cover shown on cards and property pages. Add a label, then press Enter or click outside to save it.',
     location:
         'Full street address. Not shown on the public website — shared with clients only after mobile OTP verification.',
     contact_person:
