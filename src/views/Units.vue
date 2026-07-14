@@ -33,13 +33,20 @@
             <table class="table table-vcenter table-hover card-table mb-0">
                 <thead>
                     <tr>
-                        <th v-for="field in listFields" :key="field.key">{{ field.label }}</th>
+                        <SortableTh
+                            v-for="field in listFields"
+                            :key="field.key"
+                            :label="field.label"
+                            :active="sortBy === field.key"
+                            :direction="sortDir"
+                            @sort="onSort(field.key)"
+                        />
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr
-                        v-for="item in sortableUnits"
+                        v-for="item in paginatedUnits"
                         :key="item.id"
                         :class="{ 'table-row--highlighted': isRecordHighlighted(item.id) }"
                         :data-record-id="item.id"
@@ -60,13 +67,17 @@
                             </TableActionsDropdown>
                         </td>
                     </tr>
-                    <tr v-if="!sortableUnits.length">
+                    <tr v-if="!paginatedUnits.length">
                         <td :colspan="listFields.length + 1" class="text-center text-secondary py-4">
                             No units found.
                         </td>
                     </tr>
                 </tbody>
             </table>
+
+            <template #footer>
+                <TablePagination embedded :meta="paginationMeta" @page-change="goToPage" />
+            </template>
         </ListTableCard>
 
         <ModalShell v-if="showUnitModal">
@@ -276,6 +287,8 @@ import PageHeader from '@/components/layout/PageHeader.vue';
 import ListTableCard from '@/components/ListTableCard.vue';
 import TableFiltersBar from '@/components/TableFiltersBar.vue';
 import TableActionsDropdown from '@/components/TableActionsDropdown.vue';
+import TablePagination from '@/components/TablePagination.vue';
+import SortableTh from '@/components/SortableTh.vue';
 import ModalShell from '@/components/ModalShell.vue';
 import LabelWithInfo from '@/components/LabelWithInfo.vue';
 import UnitPhotosEditor from '@/components/UnitPhotosEditor.vue';
@@ -287,6 +300,12 @@ import {
     UNIT_LISTING_FILTER_OPTIONS,
     emptyUnitListingFields,
 } from '@/utils/unitListingDisplay';
+import {
+    applySortToQuery,
+    nextSortState,
+    parseSortQuery,
+    sortRows,
+} from '@/utils/tableSort';
 import recordHighlight from '@/mixins/recordHighlight';
 import unitTypes from '@/mixins/unitTypes';
 import { getPublicUnitUrl } from '@/config/publicSite';
@@ -299,22 +318,25 @@ import {
 } from '@/constants/paymentTerms';
 import { UNIT_FIELD_HELP } from '@/constants/fieldHelp';
 
+const PER_PAGE = 25;
+
 const YES_NO_OPTIONS = [
     { value: true, text: 'Yes' },
     { value: false, text: 'No' },
 ];
 
 const LIST_FIELDS = [
-    { key: 'project_name', label: 'Property Name' },
-    { key: 'building_name', label: 'Building' },
     { key: 'unit_type', label: 'Unit Type' },
-    { key: 'listing_type', label: 'Listing' },
     { key: 'unit_size', label: 'Unit Size' },
-    { key: 'bedrooms', label: 'Bedrooms' },
-    { key: 'bathrooms', label: 'Bathrooms' },
-    { key: 'floor', label: 'Floor' },
     { key: 'unit_price', label: 'Price' },
+    { key: 'listing_type', label: 'Listing Type' },
+    { key: 'project_name', label: 'Property' },
+    { key: 'building_name', label: 'Building' },
+    { key: 'floor', label: 'Floor' },
+    { key: 'bedrooms', label: 'Bedrooms' },
 ];
+
+const SORTABLE_KEYS = LIST_FIELDS.map((field) => field.key);
 
 const DETAIL_FIELDS = [
     { key: 'project_id', label: 'Property Name', required: true },
@@ -389,12 +411,27 @@ function emptyUnitForm() {
 
 export default {
     name: 'UnitsPage',
-    components: { PageHeader, ListTableCard, TableFiltersBar, TableActionsDropdown, ModalShell, LabelWithInfo, UnitPhotosEditor, UnitListingFields },
+    components: {
+        PageHeader,
+        ListTableCard,
+        TableFiltersBar,
+        TableActionsDropdown,
+        TablePagination,
+        SortableTh,
+        ModalShell,
+        LabelWithInfo,
+        UnitPhotosEditor,
+        UnitListingFields,
+    },
     mixins: [Formatters, recordHighlight, unitTypes],
     data() {
         return {
             unitsList: [],
             filteredUnits: [],
+            currentPage: 1,
+            perPage: PER_PAGE,
+            sortBy: null,
+            sortDir: 'asc',
             searchQuery: '',
             projects: [],
             projectOptions: [],
@@ -418,10 +455,37 @@ export default {
         };
     },
     computed: {
-        sortableUnits() {
-            return this.filteredUnits
-                .slice()
-                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        sortedUnits() {
+            if (!this.sortBy) {
+                return this.filteredUnits
+                    .slice()
+                    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            }
+
+            return sortRows(this.filteredUnits, {
+                sortBy: this.sortBy,
+                sortDir: this.sortDir,
+                getSortValue: (unit, key) => this.getUnitSortValue(unit, key),
+                getTieBreaker: (unit) => unit.created_at || unit.id,
+            });
+        },
+        paginationMeta() {
+            const total = this.sortedUnits.length;
+            const last_page = total ? Math.ceil(total / this.perPage) : 1;
+            const current_page = Math.min(this.currentPage, last_page);
+
+            return {
+                current_page,
+                last_page,
+                total,
+                per_page: this.perPage,
+            };
+        },
+        paginatedUnits() {
+            if (!this.sortedUnits.length) return [];
+
+            const start = (this.paginationMeta.current_page - 1) * this.perPage;
+            return this.sortedUnits.slice(start, start + this.perPage);
         },
         unitModalTitle() {
             if (this.isNewUnit) return 'Add New Unit';
@@ -453,13 +517,105 @@ export default {
         },
     },
     async created() {
+        this.applyRouteQuery();
         await Promise.all([this.loadProjects(), this.loadUnitTypes()]);
+        this.normalizeRouteFilters();
         await this.filterUnits();
+        this.syncRouteQuery();
     },
     methods: {
         formatPaymentTermsDisplay,
         formatUnitListingType,
         formatUnitListingPrice,
+        queryParamValue(value) {
+            if (Array.isArray(value)) return value[0];
+            return value;
+        },
+        applyRouteQuery() {
+            const query = this.$route.query || {};
+            const search = String(this.queryParamValue(query.q) || '').trim();
+            const projectRaw = this.queryParamValue(query.project);
+            const listingRaw = this.queryParamValue(query.listing);
+            const unitTypeRaw = this.queryParamValue(query.unitType);
+            const pageRaw = parseInt(String(this.queryParamValue(query.page) || ''), 10);
+
+            this.searchQuery = search;
+            this.selectedProjectId = projectRaw != null && String(projectRaw).trim() !== ''
+                ? Number(projectRaw) || String(projectRaw)
+                : null;
+            this.selectedListingType = listingRaw != null && String(listingRaw).trim() !== ''
+                ? String(listingRaw)
+                : null;
+            this.selectedUnitType = unitTypeRaw != null && String(unitTypeRaw).trim() !== ''
+                ? String(unitTypeRaw)
+                : null;
+            this.currentPage = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+
+            const { sortBy, sortDir } = parseSortQuery(query, SORTABLE_KEYS);
+            this.sortBy = sortBy;
+            this.sortDir = sortDir;
+        },
+        normalizeRouteFilters() {
+            if (
+                this.selectedProjectId != null
+                && !this.projects.some((project) => String(project.id) === String(this.selectedProjectId))
+            ) {
+                this.selectedProjectId = null;
+            }
+
+            if (
+                this.selectedListingType != null
+                && !UNIT_LISTING_FILTER_OPTIONS.some(
+                    (opt) => opt.value != null && String(opt.value) === String(this.selectedListingType),
+                )
+            ) {
+                this.selectedListingType = null;
+            }
+
+            if (
+                this.selectedUnitType != null
+                && !this.unitTypeOptions.some((name) => String(name) === String(this.selectedUnitType))
+            ) {
+                this.selectedUnitType = null;
+            }
+
+            if (this.sortBy && !SORTABLE_KEYS.includes(this.sortBy)) {
+                this.sortBy = null;
+                this.sortDir = 'asc';
+            }
+        },
+        buildRouteQuery() {
+            const query = {};
+            const search = this.searchQuery.trim();
+
+            if (search) query.q = search;
+            if (this.selectedProjectId != null && this.selectedProjectId !== '') {
+                query.project = String(this.selectedProjectId);
+            }
+            if (this.selectedListingType != null && this.selectedListingType !== '') {
+                query.listing = String(this.selectedListingType);
+            }
+            if (this.selectedUnitType != null && this.selectedUnitType !== '') {
+                query.unitType = String(this.selectedUnitType);
+            }
+            if (this.currentPage > 1) {
+                query.page = String(this.currentPage);
+            }
+
+            return applySortToQuery(query, this.sortBy, this.sortDir);
+        },
+        syncRouteQuery() {
+            const nextQuery = this.buildRouteQuery();
+            const currentQuery = this.$route.query || {};
+            const keys = new Set([...Object.keys(nextQuery), ...Object.keys(currentQuery)]);
+            const unchanged = [...keys].every(
+                (key) => String(this.queryParamValue(currentQuery[key]) || '') === String(nextQuery[key] || ''),
+            );
+
+            if (unchanged) return;
+
+            this.$router.replace({ query: nextQuery }).catch(() => {});
+        },
         displayValue(item, key) {
             if (key === 'project_name') return item.projects?.project_name || '—';
             if (key === 'building_name') return item.buildings?.building_name || '—';
@@ -467,6 +623,37 @@ export default {
             if (key === 'unit_price') return formatUnitListingPrice(item, this.formatPrice.bind(this));
             const value = item[key];
             return value === '' || value == null ? '—' : value;
+        },
+        getUnitSortValue(unit, key) {
+            if (key === 'project_name') return unit.projects?.project_name || '';
+            if (key === 'building_name') return unit.buildings?.building_name || '';
+            if (key === 'listing_type') return formatUnitListingType(unit.listing_type);
+            if (key === 'unit_type' || key === 'unit_size') return unit[key] || '';
+            if (key === 'bedrooms' || key === 'bathrooms' || key === 'floor') {
+                const value = Number(unit[key]);
+                return Number.isFinite(value) ? value : null;
+            }
+            if (key === 'unit_price') {
+                if ((unit.listing_type || 'sale') === 'rent') {
+                    const monthly = Number(unit.monthly_rent);
+                    if (Number.isFinite(monthly) && monthly > 0) return monthly;
+                    const daily = Number(unit.daily_rent);
+                    if (Number.isFinite(daily) && daily > 0) return daily;
+                    const hourly = Number(unit.hourly_rent);
+                    if (Number.isFinite(hourly) && hourly > 0) return hourly;
+                    return null;
+                }
+                const price = Number(unit.unit_price);
+                return Number.isFinite(price) ? price : null;
+            }
+            return unit[key] ?? '';
+        },
+        onSort(columnKey) {
+            const next = nextSortState(this.sortBy, this.sortDir, columnKey);
+            this.sortBy = next.sortBy;
+            this.sortDir = next.sortDir;
+            this.currentPage = 1;
+            this.syncRouteQuery();
         },
         displayDetailValue(field, value) {
             if (field.key === 'project_id') {
@@ -544,7 +731,6 @@ export default {
             this.projects = res.data.sort((a, b) => a.project_name.localeCompare(b.project_name));
             this.projectOptions = this.projects.map((p) => ({ value: p.id, text: p.project_name }));
             this.projectFilterOptions = [{ value: null, text: 'All Properties' }, ...this.projectOptions];
-            this.selectedProjectId = null;
         },
         async filterUnits() {
             try {
@@ -560,13 +746,19 @@ export default {
             }
         },
         onSearchChange() {
+            this.currentPage = 1;
             this.applyUnitFilters();
+            this.syncRouteQuery();
         },
         onUnitTypeFilterChange() {
+            this.currentPage = 1;
             this.applyUnitFilters();
+            this.syncRouteQuery();
         },
         onListingTypeFilterChange() {
+            this.currentPage = 1;
             this.applyUnitFilters();
+            this.syncRouteQuery();
         },
         applyUnitFilters() {
             let results = this.unitsList;
@@ -589,6 +781,7 @@ export default {
             }
 
             this.filteredUnits = results;
+            this.clampCurrentPage();
         },
         matchesSearch(unit, query) {
             return this.getUnitSearchValues(unit).some(
@@ -631,7 +824,9 @@ export default {
                 .map((value) => String(value));
         },
         async onProjectFilterChange() {
+            this.currentPage = 1;
             await this.filterUnits();
+            this.syncRouteQuery();
         },
         async getBuildings(projectId) {
             if (!projectId) return [];
@@ -684,8 +879,28 @@ export default {
 
             if (highlightId) {
                 this.$nextTick(() => {
+                    this.goToRecordPage(highlightId);
                     this.$nextTick(() => this.highlightRecord(highlightId));
                 });
+            }
+        },
+        goToRecordPage(id) {
+            const index = this.sortedUnits.findIndex((unit) => String(unit.id) === String(id));
+            if (index === -1) return;
+            this.currentPage = Math.floor(index / this.perPage) + 1;
+            this.syncRouteQuery();
+        },
+        goToPage(page) {
+            this.currentPage = page;
+            this.syncRouteQuery();
+        },
+        clampCurrentPage() {
+            const lastPage = this.paginationMeta.last_page;
+            if (this.currentPage > lastPage) {
+                this.currentPage = lastPage;
+            }
+            if (this.currentPage < 1) {
+                this.currentPage = 1;
             }
         },
         resolveUnitPhotoUrl(url) {

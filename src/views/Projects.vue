@@ -481,9 +481,86 @@ export default {
         },
     },
     async created() {
+        this.applyRouteQuery();
         await this.loadProjects();
     },
     methods: {
+        queryParamValue(value) {
+            if (Array.isArray(value)) return value[0];
+            return value;
+        },
+        applyRouteQuery() {
+            const query = this.$route.query || {};
+            const search = String(this.queryParamValue(query.q) || '').trim();
+            const projectRaw = this.queryParamValue(query.project);
+            const developerRaw = this.queryParamValue(query.developer);
+            const featuredRaw = String(this.queryParamValue(query.featured) || '').trim().toLowerCase();
+            const pageRaw = parseInt(String(this.queryParamValue(query.page) || ''), 10);
+
+            this.searchQuery = search;
+            this.selectedProjectId = projectRaw != null && String(projectRaw).trim() !== ''
+                ? Number(projectRaw) || String(projectRaw)
+                : null;
+            this.selectedDeveloper = developerRaw != null && String(developerRaw).trim() !== ''
+                ? String(developerRaw)
+                : null;
+            this.selectedFeatured = featuredRaw === 'yes' || featuredRaw === 'no'
+                ? featuredRaw
+                : null;
+            this.currentPage = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+        },
+        normalizeRouteFilters() {
+            if (
+                this.selectedProjectId != null
+                && !this.projectsList.some((p) => String(p.id) === String(this.selectedProjectId))
+            ) {
+                this.selectedProjectId = null;
+            }
+
+            const developers = this.developerOptions
+                .map((opt) => opt.value)
+                .filter((value) => value != null);
+
+            if (this.selectedDeveloper && !developers.includes(this.selectedDeveloper)) {
+                this.selectedDeveloper = null;
+            }
+
+            if (this.selectedFeatured !== 'yes' && this.selectedFeatured !== 'no') {
+                this.selectedFeatured = null;
+            }
+        },
+        buildRouteQuery() {
+            const query = {};
+            const search = this.searchQuery.trim();
+
+            if (search) query.q = search;
+            if (this.selectedProjectId != null && this.selectedProjectId !== '') {
+                query.project = String(this.selectedProjectId);
+            }
+            if (this.selectedDeveloper) {
+                query.developer = String(this.selectedDeveloper);
+            }
+            if (this.selectedFeatured === 'yes' || this.selectedFeatured === 'no') {
+                query.featured = this.selectedFeatured;
+            }
+            if (this.currentPage > 1) {
+                query.page = String(this.currentPage);
+            }
+
+            return query;
+        },
+        syncRouteQuery() {
+            const nextQuery = this.buildRouteQuery();
+            const currentQuery = this.$route.query || {};
+            const keys = new Set([...Object.keys(nextQuery), ...Object.keys(currentQuery)]);
+            const unchanged = [...keys].every(
+                (key) => String(this.queryParamValue(currentQuery[key]) || '') === String(nextQuery[key] || ''),
+            );
+
+            if (unchanged) return;
+
+            this.$router.replace({ query: nextQuery }).catch(() => {});
+        },
         displayValue(item, key) {
             if (key === 'status') return getBuildingStatusLabel(item.status);
             if (key === 'slug') return item.slug || '—';
@@ -614,6 +691,7 @@ export default {
             const index = this.filteredProjects.findIndex((p) => String(p.id) === String(id));
             if (index === -1) return;
             this.currentPage = Math.floor(index / this.perPage) + 1;
+            this.syncRouteQuery();
         },
         async saveProject() {
             this.savingProject = true;
@@ -703,28 +781,18 @@ export default {
             const developers = [...new Set(this.projectsList.map((p) => p.developer).filter(Boolean))].sort();
             this.developerOptions = [{ value: null, text: 'All Developers' }, ...developers.map((d) => ({ value: d, text: d }))];
 
-            if (
-                this.selectedProjectId != null
-                && !this.projectsList.some((p) => String(p.id) === String(this.selectedProjectId))
-            ) {
-                this.selectedProjectId = null;
-            }
-
-            if (
-                this.selectedDeveloper
-                && !developers.includes(this.selectedDeveloper)
-            ) {
-                this.selectedDeveloper = null;
-            }
-
+            this.normalizeRouteFilters();
             this.filterProjects();
+            this.syncRouteQuery();
         },
         onFiltersChange() {
             this.currentPage = 1;
             this.filterProjects();
+            this.syncRouteQuery();
         },
         goToPage(page) {
             this.currentPage = page;
+            this.syncRouteQuery();
         },
         clampCurrentPage() {
             const lastPage = this.paginationMeta.last_page;

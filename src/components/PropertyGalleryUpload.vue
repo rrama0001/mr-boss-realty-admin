@@ -93,7 +93,10 @@
             </div>
         </div>
 
-        <div v-if="images.length" class="property-gallery-upload__grid">
+        <div
+            v-if="images.length || !pendingUploads.length"
+            class="property-gallery-upload__grid"
+        >
             <div
                 v-for="image in images"
                 :key="image.id"
@@ -169,30 +172,33 @@
                     Saved
                 </span>
             </div>
-        </div>
 
-        <div v-else-if="!pendingUploads.length" class="property-gallery-upload__empty text-secondary small">
-            No property images uploaded yet.
-        </div>
-
-        <div class="property-gallery-upload__actions">
-            <label
-                class="btn btn-outline-primary btn-sm mb-0"
-                :class="{ disabled: uploading || disabled || pendingUploads.length > 0 }"
+            <div
+                v-if="!pendingUploads.length"
+                class="property-gallery-upload__card property-gallery-upload__card--add"
             >
-                <i class="ti ti-upload me-1" aria-hidden="true"></i>
-                Choose images
-                <input
-                    ref="fileInput"
-                    type="file"
-                    class="property-gallery-upload__file-input"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    multiple
-                    :disabled="uploading || disabled || pendingUploads.length > 0"
-                    @change="onFilesSelected"
-                />
-            </label>
+                <button
+                    type="button"
+                    class="property-gallery-upload__add"
+                    :disabled="uploading || disabled"
+                    aria-label="Add images"
+                    @click="openFilePicker"
+                >
+                    <i class="ti ti-plus" aria-hidden="true"></i>
+                    <span>Add images</span>
+                </button>
+            </div>
         </div>
+
+        <input
+            ref="fileInput"
+            type="file"
+            class="property-gallery-upload__file-input"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple
+            :disabled="uploading || disabled || pendingUploads.length > 0"
+            @change="onFilesSelected"
+        />
 
         <ImageCropModal
             :visible="cropOpen"
@@ -314,6 +320,10 @@ export default {
             if (this.$refs.fileInput) {
                 this.$refs.fileInput.value = '';
             }
+        },
+        openFilePicker() {
+            if (this.uploading || this.disabled || this.pendingUploads.length) return;
+            this.$refs.fileInput?.click();
         },
         revokePendingPreviews() {
             this.pendingUploads.forEach((pending) => {

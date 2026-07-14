@@ -3,55 +3,62 @@
         <LabelWithInfo label="Property Logo" :help="help" />
 
         <div class="property-logo-upload__preview-wrap">
-            <div class="property-logo-upload__preview" :class="{ 'property-logo-upload__preview--empty': !displayUrl }">
-                <img
-                    v-if="resolvedLogoUrl && !previewFailed"
-                    :key="resolvedLogoUrl"
-                    :src="resolvedLogoUrl"
-                    alt="Property logo preview"
-                    class="property-logo-upload__image"
-                    @error="onPreviewError"
-                    @load="previewFailed = false"
-                />
-                <div v-else class="property-logo-upload__placeholder text-secondary">
-                    <i class="ti ti-photo" aria-hidden="true"></i>
-                    <span>No logo uploaded</span>
+            <div
+                class="property-logo-upload__preview"
+                :class="{
+                    'property-logo-upload__preview--empty': !displayUrl || previewFailed,
+                    'property-logo-upload__preview--busy': uploading || disabled || cropOpen,
+                }"
+            >
+                <button
+                    type="button"
+                    class="property-logo-upload__hit"
+                    :disabled="uploading || disabled || cropOpen"
+                    :aria-label="displayUrl ? 'Replace property logo' : 'Upload property logo'"
+                    @click="openFilePicker"
+                >
+                    <img
+                        v-if="resolvedLogoUrl && !previewFailed"
+                        :key="resolvedLogoUrl"
+                        :src="resolvedLogoUrl"
+                        alt=""
+                        class="property-logo-upload__image"
+                        @error="onPreviewError"
+                        @load="previewFailed = false"
+                    />
+                    <div v-else class="property-logo-upload__placeholder text-secondary">
+                        <i class="ti ti-upload" aria-hidden="true"></i>
+                        <span>Upload Logo</span>
+                    </div>
+                </button>
+
+                <div v-if="displayUrl && !uploading" class="property-gallery-upload__toolbar">
+                    <button
+                        type="button"
+                        class="property-gallery-upload__tool btn btn-sm btn-danger"
+                        :disabled="removing || disabled || cropOpen"
+                        aria-label="Remove logo"
+                        @click.stop.prevent="removeLogo"
+                    >
+                        <i class="ti ti-trash" aria-hidden="true"></i>
+                    </button>
                 </div>
             </div>
 
-            <div class="property-logo-upload__actions">
-                <label class="btn btn-outline-primary btn-sm mb-0" :class="{ disabled: uploading || disabled || cropOpen }">
-                    <i class="ti ti-upload me-1" aria-hidden="true"></i>
-                    {{ displayUrl ? 'Replace logo' : 'Upload logo' }}
-                    <input
-                        ref="fileInput"
-                        type="file"
-                        class="property-logo-upload__file-input"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        :disabled="uploading || disabled || cropOpen"
-                        @change="onFileSelected"
-                    />
-                </label>
-                <button
-                    v-if="displayUrl"
-                    type="button"
-                    class="btn btn-outline-danger btn-sm"
-                    :disabled="uploading || removing || disabled || cropOpen"
-                    @click="removeLogo"
-                >
-                    <i class="ti ti-trash me-1" aria-hidden="true"></i>
-                    Remove
-                </button>
-            </div>
+            <input
+                ref="fileInput"
+                type="file"
+                class="property-logo-upload__file-input"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                :disabled="uploading || disabled || cropOpen"
+                @change="onFileSelected"
+            />
         </div>
 
-        <div v-if="uploading || removing" class="text-secondary small mt-2">
-            {{ uploading ? 'Uploading logo...' : 'Removing logo...' }}
+        <div v-if="pendingBlob && !projectId" class="text-secondary small mt-2">
+            Logo will upload when you save the property.
         </div>
-        <div v-else-if="pendingBlob && !projectId" class="text-secondary small mt-2">
-            Logo will upload when you save the property. JPG, PNG, WebP, or GIF. Max 5 MB.
-        </div>
-        <div v-else class="text-secondary small mt-2">
+        <div v-else-if="!displayUrl" class="text-secondary small mt-2">
             JPG, PNG, WebP, or GIF. Max 5 MB. Cropped to a square before upload.
         </div>
 
@@ -112,22 +119,35 @@ export default {
                 ? this.pendingPreviewUrl
                 : resolveMediaUrl(String(this.logoUrl || '').trim());
             if (!base) return '';
+            // Blob previews should not get cache-bust query params.
+            if (base.startsWith('blob:')) return base;
             const sep = base.includes('?') ? '&' : '?';
             return this.logoCacheKey ? `${base}${sep}v=${this.logoCacheKey}` : base;
         },
     },
     watch: {
-        logoUrl() {
+        logoUrl(value) {
             this.previewFailed = false;
+            const next = String(value || '').trim();
+            // Drop local blob preview once the real uploaded URL arrives.
+            if (next && !next.startsWith('blob:') && this.pendingPreviewUrl) {
+                URL.revokeObjectURL(this.pendingPreviewUrl);
+                this.pendingPreviewUrl = null;
+                this.pendingBlob = null;
+            }
         },
     },
     beforeUnmount() {
         this.revokeCropObjectUrl();
-        this.clearPendingLogo({ emit: false });
+        this.clearPendingPreview({ emit: false });
     },
     methods: {
         onPreviewError() {
             this.previewFailed = true;
+        },
+        openFilePicker() {
+            if (this.uploading || this.disabled || this.cropOpen) return;
+            this.$refs.fileInput?.click();
         },
         resetFileInput() {
             if (this.$refs.fileInput) {
@@ -140,7 +160,7 @@ export default {
                 this.cropObjectUrl = null;
             }
         },
-        clearPendingLogo({ emit = true } = {}) {
+        clearPendingPreview({ emit = false } = {}) {
             if (this.pendingPreviewUrl) {
                 URL.revokeObjectURL(this.pendingPreviewUrl);
             }
@@ -149,6 +169,17 @@ export default {
             if (emit) {
                 this.$emit('update:logoUrl', '');
             }
+        },
+        setLocalPreview(blob) {
+            if (this.pendingPreviewUrl) {
+                URL.revokeObjectURL(this.pendingPreviewUrl);
+            }
+            this.pendingBlob = blob;
+            this.pendingPreviewUrl = URL.createObjectURL(blob);
+            this.previewFailed = false;
+            this.logoCacheKey = Date.now();
+            // Push preview to parent so it stays visible in the modal immediately.
+            this.$emit('update:logoUrl', this.pendingPreviewUrl);
         },
         closeCropModal() {
             this.cropOpen = false;
@@ -175,21 +206,19 @@ export default {
         async onCropConfirm(blob) {
             if (!blob) return;
 
+            this.setLocalPreview(blob);
+            this.closeCropModal();
+            await this.$nextTick();
+
             if (!this.projectId) {
-                if (this.pendingPreviewUrl) {
-                    URL.revokeObjectURL(this.pendingPreviewUrl);
-                }
-                this.pendingBlob = blob;
-                this.pendingPreviewUrl = URL.createObjectURL(blob);
-                this.previewFailed = false;
-                this.logoCacheKey = Date.now();
-                this.$emit('update:logoUrl', this.pendingPreviewUrl);
-                this.closeCropModal();
                 return;
             }
 
-            await this.uploadLogoBlob(blob, this.projectId);
-            this.closeCropModal();
+            try {
+                await this.uploadLogoBlob(blob, this.projectId);
+            } catch {
+                // Keep local preview so the user can remove or pick another file.
+            }
         },
         async uploadLogoBlob(blob, projectId) {
             this.uploading = true;
@@ -198,11 +227,12 @@ export default {
                 formData.append('logo', blob, 'logo.jpg');
 
                 const res = await this.$api.post(`/projects/${projectId}/logo`, formData);
+                const nextUrl = resolveMediaUrl(res.data.logo_url || '');
 
                 this.previewFailed = false;
                 this.logoCacheKey = Date.now();
-                this.$emit('update:logoUrl', resolveMediaUrl(res.data.logo_url || ''));
-                return res.data.logo_url || '';
+                this.$emit('update:logoUrl', nextUrl);
+                return nextUrl;
             } catch (err) {
                 console.error('Error uploading property logo:', err.response?.data || err);
                 showAppAlert(getApiErrorMessage(err, 'Failed to upload property logo.'));
@@ -215,25 +245,21 @@ export default {
             const id = projectId || this.projectId;
             if (!id || !this.pendingBlob) return '';
 
-            const logoUrl = await this.uploadLogoBlob(this.pendingBlob, id);
-            if (this.pendingPreviewUrl) {
-                URL.revokeObjectURL(this.pendingPreviewUrl);
-            }
-            this.pendingBlob = null;
-            this.pendingPreviewUrl = null;
-            return logoUrl;
+            return this.uploadLogoBlob(this.pendingBlob, id);
         },
         hasPendingUpload() {
             return Boolean(this.pendingBlob);
         },
         async removeLogo() {
+            if (this.uploading) return;
+
             if (this.pendingBlob || this.pendingPreviewUrl) {
-                this.clearPendingLogo();
+                this.clearPendingPreview({ emit: true });
                 this.previewFailed = false;
                 return;
             }
 
-            if (!this.projectId || !this.displayUrl) return;
+            if (!this.projectId || !String(this.logoUrl || '').trim()) return;
 
             this.removing = true;
             try {

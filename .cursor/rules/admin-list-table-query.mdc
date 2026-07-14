@@ -1,0 +1,33 @@
+---
+description: Admin list-table URL query params pattern (filters, search, pagination, sort)
+globs: src/views/**/*.vue
+alwaysApply: false
+---
+
+# Admin list table query params
+
+When adding filter/search/pagination/sort persistence to Admin list pages, follow the Units listing pattern in `src/views/Units.vue`.
+
+## Query param conventions
+
+- `q` — search text
+- Filter-specific keys (`project`, `listing`, `unitType`, etc.) — only when set
+- `page` — only when greater than 1
+- `sort` — active column key
+- `dir` — `asc` or `desc`
+
+Unset/default values must be omitted from the query string.
+
+## Implementation checklist
+
+1. `applyRouteQuery()` on create — hydrate local state from `$route.query`
+2. `normalizeRouteFilters()` after options load — drop invalid IDs/values
+3. `buildRouteQuery()` + `syncRouteQuery()` — `router.replace({ query })` only when changed
+4. Reset `page` to 1 when search/filters/sort change
+5. Sync after page change, sort change, and after clamping page
+
+## Sorting
+
+- Use `SortableTh` + `src/utils/tableSort.js` (`nextSortState`, `sortRows`, `parseSortQuery`, `applySortToQuery`)
+- Sort comparable raw values (numbers for price/floor/beds), not display strings
+- Keep a stable tie-breaker (e.g. `created_at` / `id`)
