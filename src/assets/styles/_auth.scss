@@ -1,0 +1,89 @@
+.page.page-center {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-center .container-tight {
+  max-width: 24rem;
+  width: 100%;
+}
+
+.page-center .login-page-logo {
+  display: block;
+  width: auto;
+  height: 43px;
+  margin-inline: auto;
+  object-fit: contain;
+}
+
+.page-center .auth-brand h1 {
+  font-size: clamp(1.25rem, 4vw, 1.5rem);
+  line-height: 1.2;
+  margin-bottom: 0.125rem;
+}
+
+.page-center .auth-brand-tagline {
+  font-size: clamp(0.875rem, 2.5vw, 1rem);
+  line-height: 1.2;
+  margin-top: 0;
+}
+
+.page-center .form-label {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.page-center .login-autofill-trap {
+  position: absolute;
+  width: 0;
+  height: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page-center .login-email-input,
+.page-center .password-field__input {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.page-center .password-field {
+  position: relative;
+}
+
+.page-center .password-field__input {
+  padding-right: 2.75rem;
+}
+
+.page-center .password-field__toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.625rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--tblr-secondary);
+  line-height: 0;
+  transform: translateY(-50%);
+  cursor: pointer;
+
+  &:hover,
+  &:focus {
+    color: var(--tblr-body-color);
+    outline: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--tblr-primary);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+}

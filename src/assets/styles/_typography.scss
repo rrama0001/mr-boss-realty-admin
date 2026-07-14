@@ -1,0 +1,40 @@
+// Tabler compiles forms at 0.875rem (14px). Normalize readable UI copy to 16px.
+body,
+.page-body,
+.modal-body,
+.card-body,
+p,
+.record-detail-list dt,
+.record-detail-list dd {
+  font-size: var(--app-text-size);
+}
+
+.form-label,
+.form-control,
+.form-select,
+.col-form-label,
+.input-group-text,
+.form-check-label,
+textarea.form-control {
+  font-size: var(--app-text-size);
+}
+
+.modal .modal-title {
+  font-size: 1.125rem;
+}
+
+.page-center .form-label,
+.page-center .login-email-input,
+.page-center .password-field__input {
+  font-size: var(--app-text-size);
+}
+
+// Uniform Bootstrap / Tabler buttons — 16px semi-bold
+.btn,
+.btn-sm,
+.btn-lg,
+.btn-group > .btn,
+.input-group .btn {
+  font-size: var(--app-text-size);
+  font-weight: 600;
+}

@@ -1,0 +1,145 @@
+@use 'variables';
+@use 'typography';
+@use 'components';
+@use 'auth';
+
+body {
+    line-height: 1.5;
+}
+
+.router-link-active.nav-link {
+    font-weight: 600;
+}
+
+.page-body {
+    margin-top: 0;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.page-wrapper {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.page-body .container-xl {
+    max-width: 1400px;
+}
+
+.modal-backdrop-custom {
+    background: rgba(15, 23, 42, 0.5);
+    z-index: 1055;
+    overflow-x: clip;
+    overflow-y: auto;
+}
+
+.modal-backdrop-custom .modal-dialog {
+    max-width: min(calc(100vw - 2rem), var(--bs-modal-width, 500px));
+    margin-inline: auto;
+}
+
+.modal-backdrop-custom .modal-dialog.modal-lg {
+    --bs-modal-width: 800px;
+}
+
+.modal-backdrop-custom .modal-dialog.modal-xl {
+    --bs-modal-width: 1140px;
+}
+
+.modal-backdrop-custom .modal-content {
+    overflow-x: clip;
+    max-width: 100%;
+}
+
+.modal-backdrop-custom .modal-body {
+    overflow-x: clip;
+    overflow-wrap: anywhere;
+}
+
+.modal-backdrop-custom .input-group,
+.modal-backdrop-custom .form-control,
+.modal-backdrop-custom .form-select,
+.modal-backdrop-custom textarea {
+    min-width: 0;
+    max-width: 100%;
+}
+
+// Modals with a <form> wrapping header/body/footer break Bootstrap flex layout.
+.modal-content > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+}
+
+.modal-dialog-scrollable .modal-content > form,
+.modal-fullscreen-sm-down .modal-content > form {
+    height: 100%;
+    max-height: 100%;
+}
+
+.modal-content > form .modal-header,
+.modal-content > form .modal-footer {
+    flex-shrink: 0;
+    background-color: var(--tblr-modal-bg, #fff);
+}
+
+.modal-content > form .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    background-color: var(--tblr-modal-bg, #fff);
+}
+
+.modal-dialog-scrollable .modal-content {
+    overflow: hidden;
+}
+
+.modal-dialog-scrollable .modal-body {
+    overflow-y: auto;
+}
+
+.action-icons a {
+    font-size: 1rem;
+    text-decoration: none;
+
+    & + a {
+        margin-left: 0.5rem;
+    }
+}
+
+.text-orange {
+    color: var(--tblr-orange);
+}
+
+.text-green {
+    color: var(--tblr-green);
+}
+
+.stat-icon i,
+.page-title__icon i {
+    line-height: 1;
+}
+
+.page-title__icon i {
+    font-size: 2.375rem;
+}
+
+.app-sidebar .nav-link-icon.stat-icon i {
+    font-size: 1.125rem;
+}
+
+@media (min-width: 992px) {
+    .app-sidebar .nav-link-icon.stat-icon i {
+        font-size: 1.25rem;
+    }
+}
+
+.stat-card .stat-icon i {
+    font-size: 1.35rem;
+}
+
+.stat-card .stat-icon--sm i {
+    font-size: 1rem;
+}
