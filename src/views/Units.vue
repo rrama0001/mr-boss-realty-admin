@@ -317,6 +317,7 @@ import {
     serializePaymentTerms,
 } from '@/constants/paymentTerms';
 import { UNIT_FIELD_HELP } from '@/constants/fieldHelp';
+import { buildUnitRef, isUnitHashRef, resolveUnitListingRef } from '@/utils/unitSlug';
 
 const PER_PAGE = 25;
 
@@ -784,6 +785,15 @@ export default {
             this.clampCurrentPage();
         },
         matchesSearch(unit, query) {
+            const listingRef = resolveUnitListingRef(unit).toLowerCase();
+            const hashedId = unit.id != null ? buildUnitRef(unit.id).toLowerCase() : '';
+            const storedSlug = String(unit.slug || '').trim().toLowerCase();
+
+            // Exact match for public hashed IDs like "8ccafc6a".
+            if (isUnitHashRef(query)) {
+                return query === listingRef || query === hashedId || query === storedSlug;
+            }
+
             return this.getUnitSearchValues(unit).some(
                 (value) => value.toLowerCase().includes(query),
             );
@@ -808,6 +818,10 @@ export default {
             });
 
             values.push(
+                unit.id,
+                unit.slug,
+                resolveUnitListingRef(unit),
+                unit.id != null ? buildUnitRef(unit.id) : null,
                 unit.projects?.developer,
                 unit.projects?.city,
                 unit.projects?.location,
