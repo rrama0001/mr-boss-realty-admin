@@ -3,8 +3,9 @@
         <LabelWithInfo label="Property Images" :help="help" />
 
         <div v-if="pendingUploads.length" class="property-gallery-upload__pending">
-            <p class="text-secondary small mb-2">
+            <p v-if="!projectId" class="text-secondary small mb-2">
                 Add a label for each image so it is easy to pick in unit and room modals.
+                Images will upload when you save the property.
             </p>
             <div class="property-gallery-upload__grid">
                 <div
@@ -69,34 +70,9 @@
                     </button>
                 </div>
             </div>
-            <div class="property-gallery-upload__pending-actions">
-                <button
-                    v-if="projectId"
-                    type="button"
-                    class="btn btn-primary btn-sm"
-                    :disabled="uploading"
-                    @click="confirmPendingUpload()"
-                >
-                    {{ uploading ? `Uploading ${uploadProgressSummary}...` : `Upload ${pendingUploads.length} image${pendingUploads.length === 1 ? '' : 's'}` }}
-                </button>
-                <p v-else class="text-secondary small mb-0 align-self-center">
-                    Images will upload when you save the property.
-                </p>
-                <button
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    :disabled="uploading"
-                    @click="cancelPendingUpload"
-                >
-                    Cancel
-                </button>
-            </div>
         </div>
 
-        <div
-            v-if="images.length || !pendingUploads.length"
-            class="property-gallery-upload__grid"
-        >
+        <div class="property-gallery-upload__grid">
             <div
                 v-for="image in images"
                 :key="image.id"
@@ -173,10 +149,7 @@
                 </span>
             </div>
 
-            <div
-                v-if="!pendingUploads.length"
-                class="property-gallery-upload__card property-gallery-upload__card--add"
-            >
+            <div class="property-gallery-upload__card property-gallery-upload__card--add">
                 <button
                     type="button"
                     class="property-gallery-upload__add"
@@ -185,7 +158,7 @@
                     @click="openFilePicker"
                 >
                     <i class="ti ti-plus" aria-hidden="true"></i>
-                    <span>Add images</span>
+                    <span>{{ uploading ? 'Uploading...' : 'Add images' }}</span>
                 </button>
             </div>
         </div>
@@ -196,7 +169,7 @@
             class="property-gallery-upload__file-input"
             accept="image/jpeg,image/png,image/webp,image/gif"
             multiple
-            :disabled="uploading || disabled || pendingUploads.length > 0"
+            :disabled="uploading || disabled"
             @change="onFilesSelected"
         />
 
@@ -259,15 +232,6 @@ export default {
             help: PROJECT_FIELD_HELP.property_gallery,
         };
     },
-    computed: {
-        uploadProgressSummary() {
-            const total = this.pendingUploads.length;
-            if (!total) return '';
-            const done = this.pendingUploads.filter((item) => item.status === 'done').length;
-            const current = Math.min(done + 1, total);
-            return `${current}/${total}`;
-        },
-    },
     watch: {
         projectId: {
             immediate: true,
@@ -322,7 +286,7 @@ export default {
             }
         },
         openFilePicker() {
-            if (this.uploading || this.disabled || this.pendingUploads.length) return;
+            if (this.uploading || this.disabled) return;
             this.$refs.fileInput?.click();
         },
         revokePendingPreviews() {
@@ -470,15 +434,22 @@ export default {
                 return;
             }
 
-            this.revokePendingPreviews();
-            this.pendingUploads = files.map((file, index) => ({
-                key: `${file.name}-${file.lastModified}-${index}`,
+            const queued = files.map((file, index) => ({
+                key: `${file.name}-${file.lastModified}-${index}-${Date.now()}`,
                 file,
                 previewUrl: URL.createObjectURL(file),
                 label: defaultGalleryLabelFromFilename(file.name),
                 progress: 0,
                 status: 'queued',
             }));
+            this.pendingUploads = [...this.pendingUploads, ...queued];
+
+            // Saved property: upload immediately. New property: queue until save.
+            if (this.projectId) {
+                this.confirmPendingUpload().catch((err) => {
+                    showAppAlert(err.message || 'Failed to upload property images.');
+                });
+            }
         },
         removePendingUpload(index) {
             if (this.uploading) return;
@@ -534,18 +505,25 @@ export default {
             let failedCount = 0;
 
             try {
-                for (const pending of [...this.pendingUploads]) {
-                    if (pending.status === 'done') continue;
+                const items = this.pendingUploads.filter((item) => item.status !== 'done');
 
-                    try {
-                        const uploaded = await this.uploadSinglePending(pending, id);
-                        uploadedAll.push(...uploaded);
-                    } catch (err) {
-                        failedCount += 1;
-                        this.updatePendingState(pending.key, { status: 'error', progress: 0 });
-                        console.error('Error uploading property gallery image:', err.response?.data || err);
+                // Upload all images concurrently; each card tracks its own progress.
+                const results = await Promise.allSettled(
+                    items.map((pending) => this.uploadSinglePending(pending, id)),
+                );
+
+                results.forEach((result, index) => {
+                    if (result.status === 'fulfilled') {
+                        uploadedAll.push(...result.value);
+                        return;
                     }
-                }
+                    failedCount += 1;
+                    this.updatePendingState(items[index].key, { status: 'error', progress: 0 });
+                    console.error(
+                        'Error uploading property gallery image:',
+                        result.reason?.response?.data || result.reason,
+                    );
+                });
 
                 if (uploadedAll.length) {
                     this.images = [...this.images, ...uploadedAll];

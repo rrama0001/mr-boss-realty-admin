@@ -17,7 +17,7 @@
                 base-class="form-label mb-1"
             />
 
-            <div v-if="unitPhotoItems.length" class="property-gallery-upload__grid">
+            <div class="property-gallery-upload__grid">
                 <div
                     v-for="item in unitPhotoItems"
                     :key="item.key"
@@ -83,35 +83,79 @@
                                 :alt="item.label"
                                 class="property-gallery-upload__image"
                             />
+                            <div
+                                v-if="item.status === 'uploading' || item.status === 'done'"
+                                class="property-gallery-upload__progress"
+                                role="progressbar"
+                                :aria-valuenow="item.progress"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                :aria-label="`Upload progress for ${item.label}`"
+                            >
+                                <div
+                                    class="property-gallery-upload__progress-bar"
+                                    :class="{
+                                        'property-gallery-upload__progress-bar--done': item.status === 'done',
+                                    }"
+                                    :style="{ width: `${item.progress}%` }"
+                                ></div>
+                                <span class="property-gallery-upload__progress-label">
+                                    {{ item.status === 'done' ? 'Uploaded' : `${item.progress}%` }}
+                                </span>
+                            </div>
+                            <div
+                                v-else-if="item.status === 'error'"
+                                class="property-gallery-upload__progress property-gallery-upload__progress--error"
+                            >
+                                <span class="property-gallery-upload__progress-label">Failed</span>
+                            </div>
+                            <div
+                                v-if="item.status !== 'uploading' && item.status !== 'done'"
+                                class="property-gallery-upload__toolbar"
+                            >
+                                <button
+                                    type="button"
+                                    class="property-gallery-upload__tool btn btn-sm btn-danger"
+                                    :disabled="uploading"
+                                    aria-label="Remove image"
+                                    @click.stop.prevent="removeUnitPhoto(item)"
+                                >
+                                    <i class="ti ti-trash" aria-hidden="true"></i>
+                                </button>
+                            </div>
                         </figure>
-                        <span class="property-gallery-upload__label-readonly text-warning">
+                        <span
+                            v-if="item.status === 'queued' && !unitId"
+                            class="property-gallery-upload__label-readonly text-warning"
+                        >
                             Saves with unit
                         </span>
                     </template>
                 </div>
+
+                <div class="property-gallery-upload__card property-gallery-upload__card--add">
+                    <button
+                        type="button"
+                        class="property-gallery-upload__add"
+                        :disabled="disabled || uploading"
+                        aria-label="Add images"
+                        @click="openFilePicker"
+                    >
+                        <i class="ti ti-plus" aria-hidden="true"></i>
+                        <span>{{ uploading ? 'Uploading...' : 'Add images' }}</span>
+                    </button>
+                </div>
             </div>
 
-            <div class="property-gallery-upload__actions">
-                <button
-                    type="button"
-                    class="btn btn-outline-primary btn-sm mb-0"
-                    :class="{ disabled: disabled || uploading }"
-                    :disabled="disabled || uploading"
-                    @click="openFilePicker"
-                >
-                    <i class="ti ti-upload me-1" aria-hidden="true"></i>
-                    {{ uploading ? 'Uploading...' : 'Choose unit photos' }}
-                </button>
-                <input
-                    ref="fileInput"
-                    type="file"
-                    class="property-gallery-upload__file-input"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    multiple
-                    :disabled="disabled || uploading"
-                    @change.stop="onFilesSelected"
-                />
-            </div>
+            <input
+                ref="fileInput"
+                type="file"
+                class="property-gallery-upload__file-input"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                :disabled="disabled || uploading"
+                @change.stop="onFilesSelected"
+            />
         </div>
 
         <ImageCropModal
@@ -209,6 +253,8 @@ export default {
                 label: item.file.name,
                 pending: true,
                 file: item.file,
+                status: item.status,
+                progress: item.progress,
             }));
 
             return [...persisted, ...pending];
@@ -339,38 +385,98 @@ export default {
                 return;
             }
 
-            if (this.unitId) {
-                this.uploadFiles(files);
-                return;
-            }
+            const queued = files.map((file, index) => ({
+                key: `${file.name}-${file.lastModified}-${index}-${Date.now()}`,
+                file,
+                previewUrl: URL.createObjectURL(file),
+                status: 'queued',
+                progress: 0,
+            }));
+            this.pendingUploads.push(...queued);
 
-            files.forEach((file, index) => {
-                this.pendingUploads.push({
-                    key: `${file.name}-${file.lastModified}-${index}-${Date.now()}`,
-                    file,
-                    previewUrl: URL.createObjectURL(file),
-                });
+            if (this.unitId) {
+                this.uploadFiles(queued);
+            }
+        },
+        updatePendingState(key, patch) {
+            this.pendingUploads = this.pendingUploads.map((item) => (
+                item.key === key ? { ...item, ...patch } : item
+            ));
+        },
+        removePendingByKeys(keys) {
+            const keySet = new Set(keys);
+            this.pendingUploads = this.pendingUploads.filter((item) => {
+                if (!keySet.has(item.key)) return true;
+                if (item.previewUrl) {
+                    URL.revokeObjectURL(item.previewUrl);
+                }
+                return false;
             });
         },
-        async uploadFiles(files) {
-            if (!this.unitId || !files.length) return;
-
+        async uploadSinglePending(item, unitId) {
             const formData = new FormData();
-            files.forEach((file) => formData.append('images', file));
+            formData.append('images', item.file);
+
+            this.updatePendingState(item.key, { status: 'uploading', progress: 0 });
+
+            const res = await this.$api.post(`/units/${unitId}/images`, formData, {
+                onUploadProgress: (event) => {
+                    if (!event.total) return;
+                    const percent = Math.min(99, Math.round((event.loaded / event.total) * 100));
+                    this.updatePendingState(item.key, { progress: percent });
+                },
+            });
+
+            this.updatePendingState(item.key, { status: 'done', progress: 100 });
+            return res.data || {};
+        },
+        async uploadFiles(items, unitId = null) {
+            const id = unitId || this.unitId;
+            if (!id || !items.length) return null;
 
             this.uploading = true;
+            let latestUrls = null;
+            const uploadedUrls = [];
+            const doneKeys = [];
+            let failedCount = 0;
+
             try {
-                const res = await this.$api.post(`/units/${this.unitId}/images`, formData);
-                const assetImageUrls = res.data?.asset_image_urls || [];
-                this.$emit('update:modelValue', assetImageUrls);
-            } catch (err) {
-                console.error('Error uploading unit images:', err.response?.data || err);
-                const message = getApiErrorMessage(err, 'Failed to upload unit photos.');
-                showAppAlert(
-                    err.response?.status === 404
-                        ? 'Unit photo upload is unavailable. Restart the API server (npm run dev in the api folder), then try again.'
-                        : message,
-                );
+                for (const item of items) {
+                    try {
+                        const data = await this.uploadSinglePending(item, id);
+                        latestUrls = data.asset_image_urls || latestUrls;
+                        uploadedUrls.push(...(data.uploaded || []));
+                        doneKeys.push(item.key);
+                    } catch (err) {
+                        failedCount += 1;
+                        this.updatePendingState(item.key, { status: 'error', progress: 0 });
+                        console.error('Error uploading unit image:', err.response?.data || err);
+                        if (err.response?.status === 404) {
+                            showAppAlert('Unit photo upload is unavailable. Restart the API server (npm run dev in the api folder), then try again.');
+                        }
+                    }
+                }
+
+                if (latestUrls) {
+                    this.$emit('update:modelValue', latestUrls);
+                }
+
+                // Default the website unit/listing card image to the first upload.
+                if (!this.coverImageUrl && uploadedUrls[0]) {
+                    this.$emit('update:coverImageUrl', uploadedUrls[0]);
+                }
+
+                this.removePendingByKeys(doneKeys);
+
+                if (failedCount > 0) {
+                    showAppAlert(
+                        failedCount === 1
+                            ? '1 photo failed to upload. Remove it or try again.'
+                            : `${failedCount} photos failed to upload. Remove them or try again.`,
+                    );
+                }
+
+                return latestUrls;
             } finally {
                 this.uploading = false;
             }
@@ -390,24 +496,14 @@ export default {
                 return this.modelValue || [];
             }
 
-            const formData = new FormData();
-            this.pendingUploads.forEach((item) => {
-                formData.append('images', item.file);
-            });
+            const items = this.pendingUploads.filter((item) => item.status !== 'done');
+            const latestUrls = await this.uploadFiles(items, unitId);
 
-            this.uploading = true;
-            try {
-                const res = await this.$api.post(`/units/${unitId}/images`, formData);
-                this.clearPendingPreviews();
-                const nextUrls = res.data?.asset_image_urls || [];
-                this.$emit('update:modelValue', nextUrls);
-                return nextUrls;
-            } catch (err) {
-                console.error('Error uploading pending unit images:', err.response?.data || err);
-                throw err;
-            } finally {
-                this.uploading = false;
+            if (this.pendingUploads.some((item) => item.status === 'error')) {
+                throw new Error('Some unit photos failed to upload.');
             }
+
+            return latestUrls || this.modelValue || [];
         },
         hasPendingUploads() {
             return this.pendingUploads.length > 0;
