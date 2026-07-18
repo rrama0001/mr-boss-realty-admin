@@ -48,6 +48,7 @@
                     <div class="accordion-body settings-page__accordion-body">
                         <template v-if="openSectionId === section.id">
                             <CompanySettings v-if="section.id === 'company-info'" />
+                            <WebsiteSettings v-else-if="section.id === 'website'" />
                             <AiSettings v-else-if="section.id === 'ai-assistant'" />
                             <Users v-else-if="section.id === 'users'" />
                         </template>
@@ -61,23 +62,23 @@
 <script>
 import PageHeader from '@/components/layout/PageHeader.vue'
 import CompanySettings from '@/views/CompanySettings.vue'
+import WebsiteSettings from '@/views/WebsiteSettings.vue'
 import AiSettings from '@/views/AiSettings.vue'
 import Users from '@/views/Users.vue'
 import { SETTINGS_SECTIONS } from '@/config/settingsSections'
-
-const DEFAULT_OPEN_SECTION = 'company-info'
 
 export default {
     name: 'SettingsPage',
     components: {
         PageHeader,
         CompanySettings,
+        WebsiteSettings,
         AiSettings,
         Users,
     },
     data() {
         return {
-            openSectionId: DEFAULT_OPEN_SECTION,
+            openSectionId: '',
         }
     },
     computed: {

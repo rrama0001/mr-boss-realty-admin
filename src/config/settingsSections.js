@@ -6,6 +6,12 @@ export const SETTINGS_SECTIONS = [
         description: 'Public contact details, hours, and social links shown on the website',
     },
     {
+        id: 'website',
+        label: 'Website',
+        icon: 'ti ti-world-cog',
+        description: 'Public website display and pagination settings',
+    },
+    {
         id: 'ai-assistant',
         label: 'AI Assistant',
         icon: 'ti ti-robot',
