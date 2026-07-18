@@ -88,6 +88,8 @@
                         </div>
                         <div class="modal-body">
                             <dl class="row mb-0 record-detail-list">
+                                <dt class="col-sm-4">Reference ID</dt>
+                                <dd class="col-sm-8">{{ unitReferenceId || '—' }}</dd>
                                 <dt class="col-sm-4">Listing type</dt>
                                 <dd class="col-sm-8">{{ formatUnitListingType(unitForm.listing_type) }}</dd>
                                 <dt class="col-sm-4">{{ unitForm.listing_type === 'rent' ? 'Rental rates' : 'Sale price' }}</dt>
@@ -490,11 +492,19 @@ export default {
         },
         unitModalTitle() {
             if (this.isNewUnit) return 'Add New Unit';
-            if (this.isViewMode) {
-                const room = this.unitForm.room_number;
-                return room ? `Room ${room}` : 'Unit Details';
-            }
-            return 'Edit Unit';
+
+            const unitType = String(this.unitForm.unit_type || this.activeUnit?.unit_type || '').trim();
+            const propertyName = String(
+                this.activeUnit?.projects?.project_name
+                || this.projectOptions.find((option) => option.value === this.unitForm.project_id)?.text
+                || '',
+            ).trim();
+            const detailTitle = unitType && propertyName
+                ? `${unitType} - ${propertyName}`
+                : (unitType || propertyName || 'Unit Details');
+
+            if (this.isViewMode) return detailTitle;
+            return `Edit ${detailTitle}`;
         },
         unitListingPriceDisplay() {
             return formatUnitListingPrice(this.unitForm, (value) => this.formatPrice(value));
@@ -515,6 +525,9 @@ export default {
             if (!project?.slug || !unitRef) return '';
 
             return getPublicUnitUrl(project, unitRef);
+        },
+        unitReferenceId() {
+            return resolveUnitListingRef(this.activeUnit || {});
         },
     },
     async created() {
