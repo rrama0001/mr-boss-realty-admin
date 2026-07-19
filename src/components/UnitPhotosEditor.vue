@@ -177,7 +177,7 @@ import ImageCropModal from '@/components/ImageCropModal.vue';
 import LabelWithInfo from '@/components/LabelWithInfo.vue';
 import { UNIT_FIELD_HELP } from '@/constants/fieldHelp';
 import { resolveMediaUrl } from '@/utils/mediaUrl';
-import { isUnitOwnedPhotoUrl } from '@/utils/unitPhotos';
+import { isUnitOwnedPhotoUrl, unitPhotoKey } from '@/utils/unitPhotos';
 import { showAppAlert, getApiErrorMessage } from '@/utils/appAlert';
 
 export default {
@@ -264,7 +264,10 @@ export default {
         unitOwnedUrls: {
             immediate: true,
             handler(urls) {
-                if (this.coverImageUrl && !(urls || []).includes(this.coverImageUrl)) {
+                if (!this.coverImageUrl) return;
+                const coverKey = unitPhotoKey(this.coverImageUrl);
+                const stillPresent = (urls || []).some((url) => unitPhotoKey(url) === coverKey);
+                if (!stillPresent) {
                     this.$emit('update:coverImageUrl', '');
                 }
             },
@@ -337,6 +340,7 @@ export default {
                 const formData = new FormData();
                 formData.append('images', blob, 'unit-photo.jpg');
                 formData.append('replace_url', replaceUrl);
+                formData.append('asset_image_urls', JSON.stringify(this.modelValue || []));
 
                 const res = await this.$api.post(`/units/${this.unitId}/images`, formData);
                 const assetImageUrls = res.data?.asset_image_urls || [];
@@ -344,7 +348,9 @@ export default {
 
                 this.$emit('update:modelValue', assetImageUrls);
 
-                if (this.coverImageUrl === replaceUrl && uploadedUrl) {
+                if (res.data?.cover_image_url) {
+                    this.$emit('update:coverImageUrl', res.data.cover_image_url);
+                } else if (this.coverImageUrl === replaceUrl && uploadedUrl) {
                     this.$emit('update:coverImageUrl', uploadedUrl);
                 }
 
@@ -416,6 +422,8 @@ export default {
         async uploadSinglePending(item, unitId) {
             const formData = new FormData();
             formData.append('images', item.file);
+            // Current editor list (without UI-deleted photos) so the API does not resurrect them.
+            formData.append('asset_image_urls', JSON.stringify(this.modelValue || []));
 
             this.updatePendingState(item.key, { status: 'uploading', progress: 0 });
 
@@ -436,6 +444,7 @@ export default {
 
             this.uploading = true;
             let latestUrls = null;
+            let latestCoverUrl = null;
             const uploadedUrls = [];
             const doneKeys = [];
             let failedCount = 0;
@@ -445,6 +454,9 @@ export default {
                     try {
                         const data = await this.uploadSinglePending(item, id);
                         latestUrls = data.asset_image_urls || latestUrls;
+                        if (data.cover_image_url) {
+                            latestCoverUrl = data.cover_image_url;
+                        }
                         uploadedUrls.push(...(data.uploaded || []));
                         doneKeys.push(item.key);
                     } catch (err) {
@@ -461,8 +473,9 @@ export default {
                     this.$emit('update:modelValue', latestUrls);
                 }
 
-                // Default the website unit/listing card image to the first upload.
-                if (!this.coverImageUrl && uploadedUrls[0]) {
+                if (latestCoverUrl) {
+                    this.$emit('update:coverImageUrl', latestCoverUrl);
+                } else if (!this.coverImageUrl && uploadedUrls[0]) {
                     this.$emit('update:coverImageUrl', uploadedUrls[0]);
                 }
 

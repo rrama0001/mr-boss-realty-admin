@@ -43,6 +43,25 @@
                         <i class="ti ti-trash" aria-hidden="true"></i>
                     </button>
                 </div>
+
+                <div
+                    v-if="uploading"
+                    class="property-logo-upload__progress"
+                    role="progressbar"
+                    :aria-valuenow="uploadProgress"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-label="Logo upload progress"
+                >
+                    <div
+                        class="property-logo-upload__progress-bar"
+                        :class="{ 'property-logo-upload__progress-bar--done': uploadProgress >= 100 }"
+                        :style="{ width: `${uploadProgress}%` }"
+                    ></div>
+                    <span class="property-logo-upload__progress-label">
+                        {{ uploadProgress >= 100 ? 'Uploaded' : `${uploadProgress}%` }}
+                    </span>
+                </div>
             </div>
 
             <input
@@ -99,6 +118,7 @@ export default {
     data() {
         return {
             uploading: false,
+            uploadProgress: 0,
             removing: false,
             previewFailed: false,
             logoCacheKey: 0,
@@ -222,13 +242,20 @@ export default {
         },
         async uploadLogoBlob(blob, projectId) {
             this.uploading = true;
+            this.uploadProgress = 0;
             try {
                 const formData = new FormData();
                 formData.append('logo', blob, 'logo.jpg');
 
-                const res = await this.$api.post(`/projects/${projectId}/logo`, formData);
+                const res = await this.$api.post(`/projects/${projectId}/logo`, formData, {
+                    onUploadProgress: (event) => {
+                        if (!event.total) return;
+                        this.uploadProgress = Math.min(99, Math.round((event.loaded / event.total) * 100));
+                    },
+                });
                 const nextUrl = resolveMediaUrl(res.data.logo_url || '');
 
+                this.uploadProgress = 100;
                 this.previewFailed = false;
                 this.logoCacheKey = Date.now();
                 this.$emit('update:logoUrl', nextUrl);
@@ -239,6 +266,7 @@ export default {
                 throw err;
             } finally {
                 this.uploading = false;
+                this.uploadProgress = 0;
             }
         },
         async flushPendingUpload(projectId) {

@@ -30,10 +30,10 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">
-                            AI Prompt
-                            <span class="text-secondary">(Note: Be careful changing this prompt)</span>
-                        </label>
+                        <LabelWithInfo
+                            label="AI Prompt"
+                            help="Be careful changing this prompt. It shapes how Mr. Boss AI answers website visitors."
+                        />
                         <textarea v-model="form.prompt" rows="14" class="form-control"></textarea>
                     </div>
 
@@ -120,9 +120,11 @@
 
 <script>
 import axios from 'axios';
+import LabelWithInfo from '@/components/LabelWithInfo.vue';
 
 export default {
     name: 'AiSettings',
+    components: { LabelWithInfo },
     data() {
         return {
             loading: true,

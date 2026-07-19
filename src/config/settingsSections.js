@@ -9,7 +9,7 @@ export const SETTINGS_SECTIONS = [
         id: 'website',
         label: 'Website',
         icon: 'ti ti-world-cog',
-        description: 'Public website display and pagination settings',
+        description: 'Public website display, pagination, and chat OTP settings',
     },
     {
         id: 'ai-assistant',

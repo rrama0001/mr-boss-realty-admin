@@ -1750,6 +1750,47 @@
     }
   }
 
+  &__progress {
+    position: absolute;
+    right: 0.4rem;
+    bottom: 0.4rem;
+    left: 0.4rem;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    height: 1.15rem;
+    padding: 0 0.35rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.72);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  }
+
+  &__progress-bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    background: rgba(var(--tblr-primary-rgb), 0.95);
+    transition: width 0.15s ease;
+
+    &--done {
+      background: #16a34a;
+    }
+  }
+
+  &__progress-label {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    letter-spacing: 0.01em;
+  }
+
   &__hit {
     display: flex;
     align-items: center;
