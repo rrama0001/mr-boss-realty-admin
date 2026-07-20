@@ -214,6 +214,18 @@ function hasChartItems(items) {
     return Array.isArray(items) && items.some((item) => Number(item.count) > 0)
 }
 
+/** Keep first/last labels visible; Chart.js autoSkip often drops the newest days. */
+function sparseTickLabel(label, index, total, targetCount = 7) {
+    if (total <= targetCount) return label
+    if (index === 0 || index === total - 1) return label
+
+    const step = (total - 1) / (targetCount - 1)
+    for (let i = 1; i < targetCount - 1; i += 1) {
+        if (index === Math.round(i * step)) return label
+    }
+    return ''
+}
+
 export default {
     name: 'DashboardPage',
     components: { PageHeader, StatCard, Bar, Doughnut, Line },
@@ -231,7 +243,13 @@ export default {
                 scales: {
                     x: {
                         grid: { display: false },
-                        ticks: { maxRotation: 0, autoSkipPadding: 12 },
+                        ticks: {
+                            maxRotation: 0,
+                            autoSkip: false,
+                            callback(value, index, ticks) {
+                                return sparseTickLabel(this.getLabelForValue(value), index, ticks.length)
+                            },
+                        },
                     },
                     y: {
                         beginAtZero: true,
@@ -257,7 +275,13 @@ export default {
                 scales: {
                     x: {
                         grid: { display: false },
-                        ticks: { maxRotation: 0, autoSkipPadding: 12 },
+                        ticks: {
+                            maxRotation: 0,
+                            autoSkip: false,
+                            callback(value, index, ticks) {
+                                return sparseTickLabel(this.getLabelForValue(value), index, ticks.length)
+                            },
+                        },
                     },
                     y: {
                         beginAtZero: true,
@@ -526,8 +550,12 @@ export default {
             return parts.join(' · ')
         },
         formatChartDay(isoDate) {
-            const date = new Date(`${isoDate}T00:00:00Z`)
-            return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+            const date = new Date(`${isoDate}T12:00:00Z`)
+            return date.toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                timeZone: 'Asia/Manila',
+            })
         },
         formatRelativeDate(value) {
             if (!value) return '—'
