@@ -55,6 +55,27 @@
                     </div>
                 </div>
 
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">AI token usage (last 30 days)</h3>
+                            <div v-if="aiUsageSummary" class="card-actions text-secondary small">
+                                {{ aiUsageSummary }}
+                            </div>
+                        </div>
+                        <div class="card-body dashboard-chart-body">
+                            <Line
+                                v-if="aiTokenChartData"
+                                :data="aiTokenChartData"
+                                :options="tokenLineChartOptions"
+                            />
+                            <p v-else class="text-secondary mb-0">
+                                No AI token usage recorded yet. Usage appears after website chat replies.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="col-lg-6">
                     <div class="card h-100">
                         <div class="card-header">
@@ -173,11 +194,17 @@ const COLORS = {
     blue: '#066fd1',
     cyan: '#17a2b8',
     green: '#2fb344',
-    orange: '#f76707',
+    orange: '#ff5a3c',
     amber: '#f59f00',
     slate: '#667382',
     red: '#d63939',
     teal: '#0ca678',
+}
+
+const LISTING_TYPE_COLORS = {
+    sale: COLORS.blue,
+    rent: COLORS.orange,
+    unknown: COLORS.slate,
 }
 
 const DOUGHNUT_PALETTE = [COLORS.blue, COLORS.cyan, COLORS.orange, COLORS.green, COLORS.amber, COLORS.slate]
@@ -209,6 +236,37 @@ export default {
                     y: {
                         beginAtZero: true,
                         ticks: { precision: 0 },
+                        grid: { color: 'rgba(0, 0, 0, 0.06)' },
+                    },
+                },
+            },
+            tokenLineChartOptions: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                const value = Number(context.parsed?.y) || 0
+                                return `${value.toLocaleString()} tokens`
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { maxRotation: 0, autoSkipPadding: 12 },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0,
+                            callback(value) {
+                                return Number(value).toLocaleString()
+                            },
+                        },
                         grid: { color: 'rgba(0, 0, 0, 0.06)' },
                     },
                 },
@@ -325,6 +383,15 @@ export default {
         recentLeads() {
             return this.stats?.leads?.recent || []
         },
+        aiUsageSummary() {
+            const usage = this.stats?.aiUsage
+            if (!usage) return ''
+
+            const total = Number(usage.totalTokens) || 0
+            const last7 = Number(usage.last7DaysTokens) || 0
+            const requests = Number(usage.totalRequests) || 0
+            return `${total.toLocaleString()} tokens · ${last7.toLocaleString()} last 7 days · ${requests.toLocaleString()} replies`
+        },
         leadsChartData() {
             const byDay = this.stats?.leads?.byDay
             if (!byDay?.length) return null
@@ -346,6 +413,28 @@ export default {
                 ],
             }
         },
+        aiTokenChartData() {
+            const byDay = this.stats?.aiUsage?.byDay
+            if (!byDay?.length) return null
+            if (!byDay.some((day) => Number(day.tokens) > 0)) return null
+
+            return {
+                labels: byDay.map((day) => this.formatChartDay(day.date)),
+                datasets: [
+                    {
+                        label: 'Tokens',
+                        data: byDay.map((day) => Number(day.tokens) || 0),
+                        borderColor: COLORS.blue,
+                        backgroundColor: 'rgba(6, 111, 209, 0.14)',
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        borderWidth: 2,
+                    },
+                ],
+            }
+        },
         listingTypeChartData() {
             const items = this.stats?.units?.byListingType
             if (!hasChartItems(items)) return null
@@ -355,7 +444,9 @@ export default {
                 datasets: [
                     {
                         data: items.map((item) => item.count),
-                        backgroundColor: items.map((_, index) => DOUGHNUT_PALETTE[index % DOUGHNUT_PALETTE.length]),
+                        backgroundColor: items.map(
+                            (item, index) => LISTING_TYPE_COLORS[item.key] || DOUGHNUT_PALETTE[index % DOUGHNUT_PALETTE.length],
+                        ),
                         borderWidth: 0,
                     },
                 ],
@@ -386,7 +477,7 @@ export default {
                 datasets: [
                     {
                         data: items.map((item) => item.count),
-                        backgroundColor: COLORS.cyan,
+                        backgroundColor: items.map((_, index) => BAR_PALETTE[index % BAR_PALETTE.length]),
                         borderRadius: 6,
                         maxBarThickness: 28,
                     },
