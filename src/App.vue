@@ -87,24 +87,32 @@ export default {
             const storedName = localStorage.getItem('userName')
             const storedEmail = localStorage.getItem('userEmail')
 
-            if (storedLogin && storedRole) {
+            const redirectIfOnLogin = () => {
+                if (this.$route.path === '/login') {
+                    this.$router.replace('/dashboard').catch(() => {})
+                }
+            }
+
+            if (storedLogin) {
                 this.isLoggedIn = true
-                this.userRole = storedRole
+                this.userRole = storedRole || null
                 this.fullName = storedName || 'User'
                 this.userEmail = storedEmail || ''
                 this.loading = false
+                redirectIfOnLogin()
 
-                if (!storedEmail) {
-                    api.get('/auth/status').then((res) => {
-                        if (res.data.loggedIn) {
-                            this.applyUserSession(res.data.user)
+                api.get('/auth/status').then((res) => {
+                    if (res.data.loggedIn) {
+                        this.applyUserSession(res.data.user)
+                        redirectIfOnLogin()
+                    } else {
+                        this.clearUserSession()
+                        if (this.$route.meta?.requiresAuth) {
+                            this.$router.replace('/login').catch(() => {})
                         }
-                    }).catch(() => {})
-                }
+                    }
+                }).catch(() => {})
 
-                if (this.$route.path === '/login') {
-                    this.$router.replace('/dashboard')
-                }
                 return
             }
 
@@ -112,9 +120,7 @@ export default {
                 const res = await api.get('/auth/status')
                 if (res.data.loggedIn) {
                     this.applyUserSession(res.data.user)
-                    if (this.$route.path === '/login') {
-                        this.$router.replace('/dashboard')
-                    }
+                    redirectIfOnLogin()
                 } else {
                     this.clearUserSession()
                 }

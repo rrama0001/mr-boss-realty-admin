@@ -1,18 +1,22 @@
-import { createRouter, createWebHistory } from 'vue-router';
-import Dashboard from './views/Dashboard.vue';
-import Projects from './views/Projects.vue';
-import ProjectDetailView from './views/ProjectDetailView.vue';
-import BuildingUnitsView from './views/BuildingUnitsView.vue';
-import Buildings from './views/Buildings.vue';
-import Units from './views/Units.vue';
-import Settings from './views/Settings.vue';
-import Leads from './views/Leads.vue';
-import Login from './views/Login.vue';
+import { createRouter, createWebHistory } from 'vue-router'
+import Dashboard from './views/Dashboard.vue'
+import Projects from './views/Projects.vue'
+import ProjectDetailView from './views/ProjectDetailView.vue'
+import BuildingUnitsView from './views/BuildingUnitsView.vue'
+import Buildings from './views/Buildings.vue'
+import Units from './views/Units.vue'
+import Settings from './views/Settings.vue'
+import Leads from './views/Leads.vue'
+import Login from './views/Login.vue'
+
+function isStoredLoggedIn() {
+    return localStorage.getItem('isLoggedIn') === 'true'
+}
 
 const router = createRouter({
     history: createWebHistory(),
     routes: [
-        { path: '/login', component: Login },
+        { path: '/login', component: Login, meta: { guestOnly: true } },
         { path: '/dashboard', component: Dashboard, meta: { requiresAuth: true } },
         { path: '/properties', component: Projects, meta: { requiresAuth: true } },
         { path: '/properties/:id', component: ProjectDetailView, meta: { requiresAuth: true } },
@@ -34,28 +38,32 @@ const router = createRouter({
         {
             path: '/logout',
             beforeEnter: () => {
-                localStorage.removeItem('isLoggedIn');
-                localStorage.removeItem('userRole');
-                return '/login';
+                localStorage.removeItem('isLoggedIn')
+                localStorage.removeItem('userRole')
+                localStorage.removeItem('userName')
+                localStorage.removeItem('userEmail')
+                return '/login'
             },
         },
         {
             path: '/',
-            redirect: () => {
-                const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
-                return isLoggedIn ? '/dashboard' : '/login';
-            },
+            redirect: () => (isStoredLoggedIn() ? '/dashboard' : '/login'),
         },
     ],
-});
+})
 
 router.beforeEach((to) => {
-    if (!to.matched.some((r) => r.meta.requiresAuth)) return true;
+    const loggedIn = isStoredLoggedIn()
 
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    if (!isLoggedIn) return '/login';
+    if (to.matched.some((route) => route.meta.guestOnly) && loggedIn) {
+        return '/dashboard'
+    }
 
-    return true;
-});
+    if (to.matched.some((route) => route.meta.requiresAuth) && !loggedIn) {
+        return '/login'
+    }
 
-export default router;
+    return true
+})
+
+export default router
